@@ -55,15 +55,12 @@ core.add_thread(function()
       local inserts = 0
       local deletes = 0
 
-      -- get diff
+      -- get diff stats
       local diff = exec({"git", "diff", "--numstat"})
       if config.gitstatus.recurse_submodules and system.get_file_info(".gitmodules") then
         local diff2 = exec({"git", "submodule", "foreach", "git diff --numstat"})
         diff = diff .. diff2
       end
-
-      -- forget the old state
-      cached_color_for_item = {}
 
       local folder = core.project_dir
       for line in string.gmatch(diff, "[^\n]+") do
@@ -75,20 +72,45 @@ core.add_thread(function()
           if path then
             inserts = inserts + (tonumber(ins) or 0)
             deletes = deletes + (tonumber(dels) or 0)
-            local abs_path = folder .. PATHSEP .. path
-            -- Color this file, and each parent folder,
-            -- so you can see at a glance which folders
-            -- have modified files in them.
-            while abs_path do
-              cached_color_for_item[abs_path] = style.gitstatus_modification
-              abs_path = common.dirname(abs_path)
-            end
           end
         end
       end
 
       git.inserts = inserts
       git.deletes = deletes
+
+      -- get per-file status
+      local files = exec({"git", "status", "--porcelain"})
+      if config.gitstatus.recurse_submodules and system.get_file_info(".gitmodules") then
+        local files2 = exec({"git", "submodule", "foreach", "git status --porcelain"})
+        files = files .. files2
+      end
+      
+      -- forget the old state
+      cached_color_for_item = {}
+      
+      folder = core.project_dir
+      for line in string.gmatch(files, "[^\n]+") do
+        local submodule = line:match("^Entering '(.+)'$")
+        if submodule then
+          folder = core.project_dir .. PATHSEP .. submodule
+        else
+          local status, path = line:match("%s*(%S+)%s+(.+)")
+          if path then
+            local abs_path = folder .. PATHSEP .. path
+            -- Color this file, and each parent folder,
+            -- so you can see at a glance which folders
+            -- have modified files in them.
+            local color = style.gitstatus_modification
+            if status == "??" then color = style.gitstatus_addition end
+            if status == "D" then color = style.gitstatus_deletion end
+            while abs_path do
+              cached_color_for_item[abs_path] = color
+              abs_path = common.dirname(abs_path)
+            end
+          end
+        end
+      end
 
     else
       git.branch = nil
