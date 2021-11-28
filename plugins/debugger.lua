@@ -167,12 +167,13 @@ function DocView:on_mouse_moved(x, y, ...)
   end
 end
 function DocView:on_mouse_pressed(button, x, y, clicks)
-  on_mouse_pressed(self, button, x, y, clicks)
+  local result = on_mouse_pressed(self, button, x, y, clicks)
   local minline, maxline = self:get_visible_line_range()
   local _, docy = self:get_line_screen_position(minline)
   if self.doc and x > self.position.x and x < self.position.x + self:get_gutter_width() and y > docy then
     debugger.toggle_breakpoint(self.doc.abs_filename, minline + math.floor((y - docy) / self:get_line_height()))
   end
+  return result
 end
 function DocView:draw_line_gutter(idx, x, y, width)
    if debugger.has_breakpoint(self.doc.abs_filename, idx) then
