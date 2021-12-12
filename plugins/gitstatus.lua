@@ -10,11 +10,13 @@ local scan_rate = config.project_scan_rate or 5
 local cached_color_for_item = {}
 
 
--- Override TreeView's color_for_item, but first
+-- Override TreeView's get_item_text, but first
 -- stash the old one (using [] in case it is not there at all)
-local old_color_for_item = TreeView["color_for_item"]
-function TreeView:color_for_item(abs_path)
-  return cached_color_for_item[abs_path] or old_color_for_item(abs_path)
+local old_get_item_text = TreeView["get_item_text"]
+function TreeView:get_item_text(item, active, hovered)
+  local text, font, color = old_get_item_text(self, item, active, hovered)
+  color = cached_color_for_item[item.abs_filename] or color
+  return text, font, color
 end
 
 
