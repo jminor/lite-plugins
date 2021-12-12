@@ -7,16 +7,50 @@ local StatusView = require "core.statusview"
 local TreeView = require "plugins.treeview"
 
 local scan_rate = config.project_scan_rate or 5
-local cached_color_for_item = {}
+local cached_status_for_item = {}
 
 
--- Override TreeView's get_item_text, but first
+style.gitstatus_addition = {common.color "#587c0c"}
+style.gitstatus_modification = {common.color "#0c7d9d"}
+style.gitstatus_deletion = {common.color "#94151b"}
+style.gitstatus_unusual = {common.color "#f4851b"}
+
+
+local function replace_alpha(color, alpha)
+  local r, g, b = table.unpack(color)
+  return { r, g, b, alpha }
+end
+
+
+-- Override TreeView's draw_item, but first
 -- stash the old one (using [] in case it is not there at all)
-local old_get_item_text = TreeView["get_item_text"]
-function TreeView:get_item_text(item, active, hovered)
-  local text, font, color = old_get_item_text(self, item, active, hovered)
-  color = cached_color_for_item[item.abs_filename] or color
-  return text, font, color
+local old_draw_item = TreeView["draw_item"]
+function TreeView:draw_item(item, active, hovered, x, y, w, h)
+  old_draw_item(self, item, active, hovered, x, y, w, h)
+  
+  -- is there a status for this item?
+  local status = cached_status_for_item[item.abs_filename]
+  if status ~= nil then
+    -- what color should it be?
+    local color = style.gitstatus_unusual
+    if status == "M" then
+      color = style.gitstatus_modification
+    elseif status == "A" or status == "C" then
+      color = style.gitstatus_addition
+    elseif status == "D" then
+      color = style.gitstatus_deletion
+    end
+    
+    -- draw a background rectangle, in case it overlaps with the label
+    -- and then the status text, centered, over that.
+    local bg_color = hovered and style.line_highlight or style.background2
+    local font = style.font
+    local text_width = font:get_width(status)
+    local tw = math.max(text_width, h)
+    x = w - tw
+    renderer.draw_rect(x, y, tw, h, replace_alpha(bg_color, 200))
+    common.draw_text(font, color, status, nil, x + (tw - text_width)/2, y, 0, h)
+  end
 end
 
 
@@ -30,9 +64,6 @@ local git = {
 config.gitstatus = {
   recurse_submodules = true
 }
-style.gitstatus_addition = {common.color "#587c0c"}
-style.gitstatus_modification = {common.color "#0c7d9d"}
-style.gitstatus_deletion = {common.color "#94151b"}
 
 
 local function exec(cmd)
@@ -89,7 +120,7 @@ core.add_thread(function()
       end
       
       -- forget the old state
-      cached_color_for_item = {}
+      cached_status_for_item = {}
       
       folder = core.project_dir
       for line in string.gmatch(files, "[^\n]+") do
@@ -100,14 +131,11 @@ core.add_thread(function()
           local status, path = line:match("%s*(%S+)%s+(.+)")
           if path then
             local abs_path = folder .. PATHSEP .. path
-            -- Color this file, and each parent folder,
+            -- Note the status of this file, and each parent folder,
             -- so you can see at a glance which folders
             -- have modified files in them.
-            local color = style.gitstatus_modification
-            if status == "??" then color = style.gitstatus_addition end
-            if status == "D" then color = style.gitstatus_deletion end
             while abs_path do
-              cached_color_for_item[abs_path] = color
+              cached_status_for_item[abs_path] = status or cached_status_for_item[abs_path]
               abs_path = common.dirname(abs_path)
             end
           end
